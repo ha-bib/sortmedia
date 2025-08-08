@@ -133,6 +133,32 @@ jobs:
           echo "Checking installed packages:"
           sdkmanager --sdk_root="$SDKROOT" --list_installed
 
+      - name: Setup Buildozer environment with pre-installed Android SDK
+        run: |
+          # Create buildozer directory structure
+          mkdir -p $HOME/.buildozer/android/platform
+          
+          # Create symlinks to use system-installed Android SDK/NDK
+          ln -sf /usr/local/lib/android/sdk $HOME/.buildozer/android/platform/android-sdk
+          ln -sf /usr/local/lib/android/sdk/ndk/25.2.9519653 $HOME/.buildozer/android/platform/android-ndk-r25b
+          
+          # Create the expected ANT directory structure
+          mkdir -p $HOME/.buildozer/android/platform/apache-ant-1.9.4
+          
+          # Install ant manually if needed
+          if [ ! -f "/usr/bin/ant" ]; then
+            sudo apt-get install -y ant
+          fi
+          
+          # Create symlink for ANT
+          if [ -d "/usr/share/ant" ]; then
+            ln -sf /usr/share/ant $HOME/.buildozer/android/platform/apache-ant-1.9.4/apache-ant-1.9.4
+          fi
+          
+          echo "Buildozer environment setup complete"
+          echo "Android SDK path: $(ls -la $HOME/.buildozer/android/platform/android-sdk || echo 'NOT FOUND')"
+          echo "Android NDK path: $(ls -la $HOME/.buildozer/android/platform/android-ndk-r25b || echo 'NOT FOUND')"
+
       - name: Debug checks before build (show that system tools exist)
         run: |
           echo "=== PATH ==="
@@ -161,11 +187,25 @@ jobs:
           ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/25.2.9519653
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
           ANDROID_HOME: /usr/local/lib/android/sdk
+          ANDROIDAPI: "31"
+          ANDROIDNDK: /usr/local/lib/android/sdk/ndk/25.2.9519653
+          ANDROIDSDK: /usr/local/lib/android/sdk
           PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$HOME/.local/bin:/usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/cmdline-tools/latest/bin:$PATH
         run: |
           set -e
           echo "---- buildozer.spec (snip top 200 lines) ----"
           sed -n '1,200p' buildozer.spec || true
+          
+          echo "=== Environment Variables ==="
+          echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
+          echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
+          echo "ANDROIDSDK: $ANDROIDSDK"
+          echo "ANDROIDNDK: $ANDROIDNDK"
+          
+          echo "=== Verifying Android SDK/NDK ==="
+          ls -la /usr/local/lib/android/sdk/ || echo "SDK directory not found"
+          ls -la /usr/local/lib/android/sdk/ndk/25.2.9519653/ || echo "NDK directory not found"
+          
           echo "Starting Buildozer..."
           BUILD_BIN=""
           if [ -x "$HOME/.local/bin/buildozer" ]; then
@@ -178,11 +218,15 @@ jobs:
             echo "ERROR: buildozer not found in PATH or $HOME/.local/bin"
             exit 1
           fi
+          
+          # Force buildozer to use existing SDK/NDK
           $BUILD_BIN -v android debug || {
             echo "Build failed — dumping directories for debug"
             ls -lah bin || true
             ls -lah ./.buildozer || true
             find . -maxdepth 3 -type f -name "*.log" -print || true
+            echo "=== Buildozer logs ==="
+            find .buildozer -name "*.log" -exec echo "=== {} ===" \; -exec cat {} \; || true
             exit 1
           }
 

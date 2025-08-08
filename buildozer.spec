@@ -16,9 +16,14 @@ android.permissions = READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, MANAGE_EXTE
 android.api = 31
 android.minapi = 26
 android.ndk = 25.2.9519653
-android.sdk = 31
 android.build_tools = 30.0.3
 android.archs = armeabi-v7a, arm64-v8a
+
+# (str) Android NDK directory (if empty, it will be automatically downloaded.)
+android.ndk_path = /usr/local/lib/android/sdk/ndk/25.2.9519653
+
+# (str) Android SDK directory (if empty, it will be automatically downloaded.)
+android.sdk_path = /usr/local/lib/android/sdk
 
 [buildozer]
 # (int) Log level (0 = error only, 1 = info, 2 = debug (with command output))

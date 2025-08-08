@@ -1,8 +1,6 @@
 import os
 import shutil
 from datetime import datetime
-from PIL import Image
-from PIL.ExifTags import TAGS
 
 # Folder sumber & tujuan
 SOURCE_DIR = "/storage/emulated/0/DCIM/Camera"
@@ -14,19 +12,13 @@ BULAN_NAMA = {
     "09": "September", "10": "Oktober", "11": "November", "12": "Desember"
 }
 
-def get_exif_date(file_path):
+def get_file_date(file_path):
+    """Get file date from modification time (fallback approach)"""
     try:
-        img = Image.open(file_path)
-        exif_data = img._getexif()
-        if exif_data:
-            for tag, value in exif_data.items():
-                tag_name = TAGS.get(tag, tag)
-                if tag_name == "DateTimeOriginal":
-                    # Format as "YYYY MM"
-                    return datetime.strptime(value, "%Y:%m:%d %H:%M:%S")
+        # Use file modification time as fallback
+        return datetime.fromtimestamp(os.path.getmtime(file_path))
     except Exception:
-        pass
-    return None
+        return datetime.now()
 
 def sort_media():
     if not os.path.exists(SOURCE_DIR):
@@ -41,12 +33,8 @@ def sort_media():
             if file.lower().endswith(('.jpg', '.jpeg', '.png', '.mp4', '.mov')):
                 src_path = os.path.join(root, file)
                 try:
-                    # Ambil tanggal dari metadata EXIF
-                    date_obj = get_exif_date(src_path)
-
-                    # Fallback ke modified time kalau EXIF tidak ada
-                    if date_obj is None:
-                        date_obj = datetime.fromtimestamp(os.path.getmtime(src_path))
+                    # Get date from file modification time
+                    date_obj = get_file_date(src_path)
 
                     year = date_obj.strftime("%Y")
                     month_num = date_obj.strftime("%m")

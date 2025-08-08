@@ -15,6 +15,9 @@ android.permissions = READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, MANAGE_EXTE
 # Target
 android.api = 31
 android.minapi = 26
+android.ndk = 25.2.9519653
+android.sdk = 31
+android.build_tools = 30.0.3
 android.archs = armeabi-v7a, arm64-v8a
 
 [buildozer]

@@ -101,14 +101,37 @@ jobs:
         run: |
           set -e
           SDKROOT=/usr/local/lib/android/sdk
-          mkdir -p $SDKROOT/cmdline-tools
+          sudo mkdir -p $SDKROOT/cmdline-tools
           curl -fsS -o cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip"
-          unzip -q cmdline-tools.zip -d $SDKROOT/cmdline-tools
-          mkdir -p $SDKROOT/cmdline-tools/latest
-          mv $SDKROOT/cmdline-tools/cmdline-tools/* $SDKROOT/cmdline-tools/latest/ || true
+          sudo unzip -q cmdline-tools.zip -d $SDKROOT/cmdline-tools
+          sudo mkdir -p $SDKROOT/cmdline-tools/latest
+          sudo mv $SDKROOT/cmdline-tools/cmdline-tools/* $SDKROOT/cmdline-tools/latest/ || true
+          sudo chown -R runner:docker $SDKROOT
           export PATH=$SDKROOT/cmdline-tools/latest/bin:$PATH
-          yes | sdkmanager --sdk_root="$SDKROOT" --licenses
-          sdkmanager --sdk_root="$SDKROOT" "platform-tools" "platforms;android-34" "build-tools;36.0.0" "ndk;25.2.9519653"
+          
+          # Accept all licenses using expect to handle interactive prompts
+          sudo apt-get install -y expect
+          
+          # Create expect script to accept all licenses
+          cat > accept_licenses.exp << 'EOF'
+          #!/usr/bin/expect -f
+          set timeout 300
+          spawn sdkmanager --sdk_root=/usr/local/lib/android/sdk --licenses
+          expect {
+              "Accept? (y/N):" { send "y\r"; exp_continue }
+              "Review licenses that have not been accepted (y/N)?" { send "y\r"; exp_continue }
+              eof
+          }
+          EOF
+          chmod +x accept_licenses.exp
+          ./accept_licenses.exp
+          
+          # Install required packages with compatible build-tools version
+          sdkmanager --sdk_root="$SDKROOT" "platform-tools" "platforms;android-31" "build-tools;30.0.3" "ndk;25.2.9519653"
+          
+          # Verify installation
+          echo "Checking installed packages:"
+          sdkmanager --sdk_root="$SDKROOT" --list_installed
 
       - name: Debug checks before build (show that system tools exist)
         run: |
@@ -136,7 +159,9 @@ jobs:
       - name: Build APK with Buildozer
         env:
           ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/25.2.9519653
-          PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$HOME/.local/bin:$PATH
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$HOME/.local/bin:/usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/cmdline-tools/latest/bin:$PATH
         run: |
           set -e
           echo "---- buildozer.spec (snip top 200 lines) ----"

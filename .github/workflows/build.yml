@@ -1,48 +1,97 @@
-name: Build Python APK
+name: Build Python APK (Buildozer)
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
-    - name: Install dependencies
+    - name: Cache pip and buildozer
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/pip
+          ~/.buildozer
+        key: ${{ runner.os }}-py-buildozer-${{ hashFiles('**/buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-py-buildozer-
+
+    - name: Install apt dependencies
       run: |
         sudo apt update
-        sudo apt install -y python3 python3-pip unzip zip libffi-dev libssl-dev \
-            libsqlite3-dev zlib1g-dev libbz2-dev libreadline-dev libncurses5-dev \
-            libncursesw5-dev libgdbm-dev liblzma-dev libgmp-dev openjdk-17-jdk wget curl
-        pip install --upgrade pip
-        pip install buildozer cython virtualenv
+        sudo apt install -y python3 python3-pip unzip zip build-essential \
+          libffi-dev libssl-dev libsqlite3-dev zlib1g-dev libbz2-dev \
+          libreadline-dev libncurses5-dev libncursesw5-dev libgdbm-dev \
+          liblzma-dev libgmp-dev openjdk-17-jdk wget curl git
 
-    - name: Set up Android SDK
+    - name: Install Buildozer & Cython (user install)
       run: |
-        mkdir -p /usr/local/lib/android/sdk
-        export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-        curl -fo sdk.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-        unzip -q sdk.zip -d $ANDROID_SDK_ROOT/cmdline-tools
-        mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
-        yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
-        $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;36.0.0"
+        python3 -m pip install --upgrade pip
+        python3 -m pip install --user buildozer cython virtualenv
+        echo "Installed buildozer at: ~/.local/bin/buildozer"
 
-    - name: Build APK
+    - name: Setup Android SDK (commandline tools) and accept licenses
       env:
-        ANDROIDSDK: /usr/local/lib/android/sdk
-        ANDROID_NDK_HOME: /usr/local/lib/android/ndk
-        PATH: /usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/cmdline-tools/latest/bin:$PATH
+        ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       run: |
-        buildozer android debug
+        set -e
+        SDKROOT=/usr/local/lib/android/sdk
+        mkdir -p $SDKROOT
+        curl -fsS -o cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip"
+        unzip -q cmdline-tools.zip -d $SDKROOT/cmdline-tools
+        # Move to 'latest' folder expected by sdkmanager
+        mkdir -p $SDKROOT/cmdline-tools/latest
+        mv $SDKROOT/cmdline-tools/cmdline-tools/* $SDKROOT/cmdline-tools/latest/ || true
+        export PATH=$SDKROOT/cmdline-tools/latest/bin:$PATH
+        yes | sdkmanager --sdk_root="$SDKROOT" --licenses
+        # Install essential packages (sesuaikan versi jika perlu)
+        sdkmanager --sdk_root="$SDKROOT" "platform-tools" "platforms;android-34" "build-tools;36.0.0" "ndk;25.2.9519653"
+
+    - name: Show SDK paths & java/python versions (debug)
+      env:
+        ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+        PATH: /usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/cmdline-tools/latest/bin:~/.local/bin:$PATH
+      run: |
+        echo "=== ENV ==="
+        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+        echo "PATH=$PATH"
+        java -version || true
+        python3 --version
+        ~/.local/bin/buildozer --version || true
+        ls -lah /usr/local/lib/android/sdk || true
+
+    - name: Build APK with Buildozer
+      env:
+        ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+        ANDROID_HOME: /usr/local/lib/android/sdk
+        ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/25.2.9519653
+        PATH: /usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/cmdline-tools/latest/bin:~/.local/bin:$PATH
+      run: |
+        set -e
+        # Print buildozer spec for logs
+        echo "---- buildozer.spec ----"
+        sed -n '1,200p' buildozer.spec || true
+        echo "---- Start buildozer ----"
+        ~/.local/bin/buildozer -v android debug || {
+          echo "Buildozer failed. List bin/ and .buildozer folder for debugging:"
+          ls -lah bin || true
+          ls -lah .buildozer || true
+          exit 1
+        }
 
     - name: Upload APK artifact
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: myapp-apk
-        path: bin/*.apk
+        name: sortmedia-apk
+        path: |
+          bin/*.apk
+          ./.buildozer/android/platform/build-arm64-v8a/dists/*/bin/*.apk

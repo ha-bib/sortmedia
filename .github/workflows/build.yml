@@ -10,127 +10,125 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
-    # Pastikan PATH standar + ~/.local/bin ada di semua step
     env:
-      PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:~/.local/bin:${{ env.PATH }}
+      # Jangan gunakan ${{ env.PATH }} di sini — gunakan $PATH literal agar shell expand.
+      PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$HOME/.local/bin:$PATH
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       ANDROID_HOME: /usr/local/lib/android/sdk
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
 
-    - name: Setup Java (Temurin 17)
-      uses: actions/setup-java@v3
-      with:
-        distribution: 'temurin'
-        java-version: '17'
+      - name: Setup Java (Temurin 17)
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
-    - name: Cache pip and buildozer artifacts
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cache/pip
-          ~/.buildozer
-        key: ${{ runner.os }}-py-buildozer-${{ hashFiles('**/buildozer.spec') }}
-        restore-keys: |
-          ${{ runner.os }}-py-buildozer-
+      - name: Cache pip and buildozer artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.buildozer
+          key: ${{ runner.os }}-py-buildozer-${{ hashFiles('**/buildozer.spec') }}
+          restore-keys: |
+            ${{ runner.os }}-py-buildozer-
 
-    - name: Install apt dependencies (including common utils)
-      run: |
-        sudo apt-get update -y
-        sudo apt-get install -y --no-install-recommends \
-          unzip zip build-essential \
-          libffi-dev libssl-dev libsqlite3-dev zlib1g-dev libbz2-dev \
-          libreadline-dev libncurses5-dev libncursesw5-dev libgdbm-dev \
-          liblzma-dev libgmp-dev wget curl git sed findutils coreutils which
+      - name: Install apt dependencies (including common utils)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            unzip zip build-essential \
+            libffi-dev libssl-dev libsqlite3-dev zlib1g-dev libbz2-dev \
+            libreadline-dev libncurses5-dev libncursesw5-dev libgdbm-dev \
+            liblzma-dev libgmp-dev wget curl git sed findutils coreutils which
 
-    - name: Install Buildozer & Cython (user install)
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install --user buildozer cython virtualenv
-        # Ensure ~/.local/bin exists and is on PATH
-        mkdir -p ~/.local/bin
-        echo "Files in ~/.local/bin:"
-        ls -lah ~/.local/bin || true
-        echo "buildozer binary (if present):"
-        command -v buildozer || command -v ~/.local/bin/buildozer || true
+      - name: Install Buildozer & Cython (user install)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --user buildozer cython virtualenv
+          mkdir -p $HOME/.local/bin
+          echo "Files in $HOME/.local/bin:"
+          ls -lah $HOME/.local/bin || true
+          echo "buildozer candidate:"
+          command -v buildozer || command -v $HOME/.local/bin/buildozer || true
 
-    - name: Setup Android SDK cmdline-tools and accept licenses
-      run: |
-        set -e
-        SDKROOT=/usr/local/lib/android/sdk
-        mkdir -p $SDKROOT/cmdline-tools
-        curl -fsS -o cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip"
-        unzip -q cmdline-tools.zip -d $SDKROOT/cmdline-tools
-        mkdir -p $SDKROOT/cmdline-tools/latest
-        mv $SDKROOT/cmdline-tools/cmdline-tools/* $SDKROOT/cmdline-tools/latest/ || true
-        export PATH=$SDKROOT/cmdline-tools/latest/bin:$PATH
-        # Accept licenses and install packages
-        yes | sdkmanager --sdk_root="$SDKROOT" --licenses
-        sdkmanager --sdk_root="$SDKROOT" "platform-tools" "platforms;android-34" "build-tools;36.0.0" "ndk;25.2.9519653"
+      - name: Setup Android SDK cmdline-tools and accept licenses
+        run: |
+          set -e
+          SDKROOT=/usr/local/lib/android/sdk
+          mkdir -p $SDKROOT/cmdline-tools
+          curl -fsS -o cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip"
+          unzip -q cmdline-tools.zip -d $SDKROOT/cmdline-tools
+          mkdir -p $SDKROOT/cmdline-tools/latest
+          mv $SDKROOT/cmdline-tools/cmdline-tools/* $SDKROOT/cmdline-tools/latest/ || true
+          export PATH=$SDKROOT/cmdline-tools/latest/bin:$PATH
+          yes | sdkmanager --sdk_root="$SDKROOT" --licenses
+          sdkmanager --sdk_root="$SDKROOT" "platform-tools" "platforms;android-34" "build-tools;36.0.0" "ndk;25.2.9519653"
 
-    - name: Debug checks before build (show that system tools exist)
-      run: |
-        echo "=== PATH ==="
-        echo $PATH
-        echo "Which / versions:"
-        command -v git || echo "git NOT FOUND"
-        git --version || true
-        command -v sed || echo "sed NOT FOUND"
-        sed --version || true
-        command -v find || echo "find NOT FOUND"
-        find --version || true || true
-        command -v ls || echo "ls NOT FOUND"
-        ls --version || true || true
-        command -v java || echo "java NOT FOUND"
-        java -version || true
-        command -v python || command -v python3 || true
-        python --version || python3 --version || true
-        echo "buildozer binary candidates:"
-        command -v buildozer || true
-        command -v ~/.local/bin/buildozer || true
-        ls -lah ~/.local/bin || true
+      - name: Debug checks before build (show that system tools exist)
+        run: |
+          echo "=== PATH ==="
+          echo "$PATH"
+          echo "Which / versions:"
+          command -v git || echo "git NOT FOUND"
+          git --version || true
+          command -v sed || echo "sed NOT FOUND"
+          sed --version || true || true
+          command -v find || echo "find NOT FOUND"
+          find --version || true || true
+          command -v ls || echo "ls NOT FOUND"
+          ls --version || true || true
+          command -v java || echo "java NOT FOUND"
+          java -version || true
+          command -v python || command -v python3 || true
+          python --version || python3 --version || true
+          echo "buildozer binary candidates:"
+          command -v buildozer || true
+          command -v $HOME/.local/bin/buildozer || true
+          ls -lah $HOME/.local/bin || true
 
-    - name: Build APK with Buildozer
-      env:
-        ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/25.2.9519653
-        PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:~/.local/bin:${{ env.PATH }}
-      run: |
-        set -e
-        echo "---- buildozer.spec (snip) ----"
-        sed -n '1,200p' buildozer.spec || true
-        echo "Starting Buildozer..."
-        # Use explicit path to buildozer in case PATH still not picked up
-        if [ -x "~/.local/bin/buildozer" ] || [ -x "$HOME/.local/bin/buildozer" ]; then
-          BUILD_BIN="$HOME/.local/bin/buildozer"
-        else
-          BUILD_BIN="$(command -v buildozer || true)"
-        fi
-        echo "Using buildozer at: $BUILD_BIN"
-        if [ -z "$BUILD_BIN" ]; then
-          echo "ERROR: buildozer not found in PATH or ~/.local/bin"
-          exit 1
-        fi
-        $BUILD_BIN -v android debug || {
-          echo "Build failed — dumping directories for debug"
-          ls -lah bin || true
-          ls -lah ./.buildozer || true
-          find . -maxdepth 3 -type f -name "*.log" -print || true
-          exit 1
-        }
+      - name: Build APK with Buildozer
+        env:
+          ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/25.2.9519653
+          PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$HOME/.local/bin:$PATH
+        run: |
+          set -e
+          echo "---- buildozer.spec (snip) ----"
+          sed -n '1,200p' buildozer.spec || true
+          echo "Starting Buildozer..."
+          # Use explicit path to buildozer in $HOME/.local/bin if available
+          if [ -x "$HOME/.local/bin/buildozer" ]; then
+            BUILD_BIN="$HOME/.local/bin/buildozer"
+          else
+            BUILD_BIN="$(command -v buildozer || true)"
+          fi
+          echo "Using buildozer at: $BUILD_BIN"
+          if [ -z "$BUILD_BIN" ]; then
+            echo "ERROR: buildozer not found in PATH or $HOME/.local/bin"
+            exit 1
+          fi
+          $BUILD_BIN -v android debug || {
+            echo "Build failed — dumping directories for debug"
+            ls -lah bin || true
+            ls -lah ./.buildozer || true
+            find . -maxdepth 3 -type f -name "*.log" -print || true
+            exit 1
+          }
 
-    - name: Upload APK artifact
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: sortmedia-apk
-        path: |
-          bin/*.apk
-          ./.buildozer/android/platform/build-arm64-v8a/dists/*/bin/*.apk
-          ./.buildozer/android/platform/build-armv7a-dists/*/bin/*.apk
+      - name: Upload APK artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sortmedia-apk
+          path: |
+            bin/*.apk
+            ./.buildozer/android/platform/build-arm64-v8a/dists/*/bin/*.apk
+            ./.buildozer/android/platform/build-armv7a-dists/*/bin/*.apk

@@ -109,6 +109,11 @@ jobs:
           sudo chown -R runner:docker $SDKROOT
           export PATH=$SDKROOT/cmdline-tools/latest/bin:$PATH
           
+          # Create the legacy tools/bin directory structure that Buildozer expects
+          sudo mkdir -p $SDKROOT/tools/bin
+          sudo ln -sf $SDKROOT/cmdline-tools/latest/bin/sdkmanager $SDKROOT/tools/bin/sdkmanager
+          sudo ln -sf $SDKROOT/cmdline-tools/latest/bin/avdmanager $SDKROOT/tools/bin/avdmanager
+          
           # Accept all licenses using expect to handle interactive prompts
           sudo apt-get install -y expect
           
@@ -129,9 +134,13 @@ jobs:
           # Install required packages with compatible build-tools version
           sdkmanager --sdk_root="$SDKROOT" "platform-tools" "platforms;android-31" "build-tools;30.0.3" "ndk;25.2.9519653"
           
-          # Verify installation
+          # Verify installation and symlinks
           echo "Checking installed packages:"
           sdkmanager --sdk_root="$SDKROOT" --list_installed
+          echo "Verifying sdkmanager symlink:"
+          ls -la $SDKROOT/tools/bin/sdkmanager || echo "sdkmanager symlink not found"
+          echo "Testing sdkmanager access:"
+          $SDKROOT/tools/bin/sdkmanager --version || echo "Cannot execute sdkmanager via symlink"
 
       - name: Setup Buildozer environment with pre-installed Android SDK
         run: |
@@ -205,6 +214,9 @@ jobs:
           echo "=== Verifying Android SDK/NDK ==="
           ls -la /usr/local/lib/android/sdk/ || echo "SDK directory not found"
           ls -la /usr/local/lib/android/sdk/ndk/25.2.9519653/ || echo "NDK directory not found"
+          echo "=== SDK Tools Structure ==="
+          ls -la /usr/local/lib/android/sdk/tools/bin/ || echo "SDK tools/bin directory not found"
+          ls -la /usr/local/lib/android/sdk/cmdline-tools/latest/bin/ || echo "cmdline-tools directory not found"
           
           echo "Starting Buildozer..."
           BUILD_BIN=""

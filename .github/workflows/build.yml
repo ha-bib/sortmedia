@@ -35,20 +35,21 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-py-buildozer-
 
-    - name: Install apt dependencies
+    - name: Install apt dependencies (including common utils)
       run: |
         sudo apt update
-        sudo apt install -y unzip zip build-essential \
+        sudo apt install -y \
+          unzip zip build-essential \
           libffi-dev libssl-dev libsqlite3-dev zlib1g-dev libbz2-dev \
           libreadline-dev libncurses5-dev libncursesw5-dev libgdbm-dev \
-          liblzma-dev libgmp-dev wget curl git
+          liblzma-dev libgmp-dev wget curl git sed findutils coreutils which
 
     - name: Install Buildozer & Cython (user install)
       run: |
         python -m pip install --upgrade pip
         python -m pip install --user buildozer cython virtualenv
         echo "Buildozer installed at ~/.local/bin:"
-        ls -lah ~/.local/bin | sed -n '1,200p'
+        ls -lah ~/.local/bin || true
 
     - name: Setup Android SDK cmdline-tools and accept licenses
       env:
@@ -59,11 +60,9 @@ jobs:
         mkdir -p $SDKROOT/cmdline-tools
         curl -fsS -o cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip"
         unzip -q cmdline-tools.zip -d $SDKROOT/cmdline-tools
-        # Move content into 'latest' as sdkmanager expects
         mkdir -p $SDKROOT/cmdline-tools/latest
         mv $SDKROOT/cmdline-tools/cmdline-tools/* $SDKROOT/cmdline-tools/latest/ || true
         export PATH=$SDKROOT/cmdline-tools/latest/bin:$PATH
-        # Accept licenses and install required packages
         yes | sdkmanager --sdk_root="$SDKROOT" --licenses
         sdkmanager --sdk_root="$SDKROOT" "platform-tools" "platforms;android-34" "build-tools;36.0.0" "ndk;25.2.9519653"
 
@@ -75,12 +74,14 @@ jobs:
         echo "=== ENV ==="
         echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
         echo "PATH=$PATH"
+        echo "Which commands:"
+        which git || true
+        which sed || true
+        which find || true
+        which ls || true
         which java || true
         java -version || true
-        which python || true
         python --version || true
-        which python3 || true
-        python3 --version || true
         echo "buildozer location:"
         ls -lah ~/.local/bin || true
         ~/.local/bin/buildozer --version || true

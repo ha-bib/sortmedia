@@ -65,17 +65,37 @@ jobs:
           # install Cython into user site so binary lands in $HOME/.local/bin
           python -m pip install --user --upgrade cython
           mkdir -p $HOME/.local/bin
-          # if the binary is cython3 but not cython, create symlink so Buildozer finds "cython"
+          
+          # Check what cython binaries were installed
+          echo "Checking for cython binaries:"
+          find $HOME/.local/bin -name "*cython*" -type f || true
+          
+          # Create symlinks if needed
           if [ -f "$HOME/.local/bin/cython3" ] && [ ! -f "$HOME/.local/bin/cython" ]; then
             ln -s "$HOME/.local/bin/cython3" "$HOME/.local/bin/cython"
             echo "Created symlink: cython -> cython3"
           fi
-          # ensure permission + list for debug
-          chmod +x $HOME/.local/bin/cython* || true
+          
+          # Also check if cython is installed as a script
+          if [ -f "$HOME/.local/bin/cython" ]; then
+            chmod +x "$HOME/.local/bin/cython"
+          elif [ -f "$HOME/.local/bin/cython3" ]; then
+            chmod +x "$HOME/.local/bin/cython3"
+            if [ ! -f "$HOME/.local/bin/cython" ]; then
+              ln -s "$HOME/.local/bin/cython3" "$HOME/.local/bin/cython"
+              echo "Created symlink: cython -> cython3"
+            fi
+          fi
+          
+          # Also install globally as fallback
+          sudo pip install cython
+          
           echo "Contents of $HOME/.local/bin after Cython install:"
           ls -lah $HOME/.local/bin || true
           echo "Which cython (should show path):"
-          command -v cython || command -v $HOME/.local/bin/cython || true
+          command -v cython || echo "cython not found in PATH"
+          echo "Testing cython execution:"
+          cython --version || $HOME/.local/bin/cython --version || echo "Cannot execute cython"
 
       - name: Setup Android SDK cmdline-tools and accept licenses
         run: |

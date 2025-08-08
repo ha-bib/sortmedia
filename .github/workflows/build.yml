@@ -8,13 +8,24 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Cache pip and buildozer
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Setup Java (Temurin 17)
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Cache pip and buildozer artifacts
       uses: actions/cache@v4
       with:
         path: |
@@ -27,35 +38,36 @@ jobs:
     - name: Install apt dependencies
       run: |
         sudo apt update
-        sudo apt install -y python3 python3-pip unzip zip build-essential \
+        sudo apt install -y unzip zip build-essential \
           libffi-dev libssl-dev libsqlite3-dev zlib1g-dev libbz2-dev \
           libreadline-dev libncurses5-dev libncursesw5-dev libgdbm-dev \
-          liblzma-dev libgmp-dev openjdk-17-jdk wget curl git
+          liblzma-dev libgmp-dev wget curl git
 
     - name: Install Buildozer & Cython (user install)
       run: |
-        python3 -m pip install --upgrade pip
-        python3 -m pip install --user buildozer cython virtualenv
-        echo "Installed buildozer at: ~/.local/bin/buildozer"
+        python -m pip install --upgrade pip
+        python -m pip install --user buildozer cython virtualenv
+        echo "Buildozer installed at ~/.local/bin:"
+        ls -lah ~/.local/bin | sed -n '1,200p'
 
-    - name: Setup Android SDK (commandline tools) and accept licenses
+    - name: Setup Android SDK cmdline-tools and accept licenses
       env:
-        ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+        SDKROOT: /usr/local/lib/android/sdk
       run: |
         set -e
         SDKROOT=/usr/local/lib/android/sdk
-        mkdir -p $SDKROOT
+        mkdir -p $SDKROOT/cmdline-tools
         curl -fsS -o cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip"
         unzip -q cmdline-tools.zip -d $SDKROOT/cmdline-tools
-        # Move to 'latest' folder expected by sdkmanager
+        # Move content into 'latest' as sdkmanager expects
         mkdir -p $SDKROOT/cmdline-tools/latest
         mv $SDKROOT/cmdline-tools/cmdline-tools/* $SDKROOT/cmdline-tools/latest/ || true
         export PATH=$SDKROOT/cmdline-tools/latest/bin:$PATH
+        # Accept licenses and install required packages
         yes | sdkmanager --sdk_root="$SDKROOT" --licenses
-        # Install essential packages (sesuaikan versi jika perlu)
         sdkmanager --sdk_root="$SDKROOT" "platform-tools" "platforms;android-34" "build-tools;36.0.0" "ndk;25.2.9519653"
 
-    - name: Show SDK paths & java/python versions (debug)
+    - name: Show env, versions, and basic checks (debug)
       env:
         ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         PATH: /usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/cmdline-tools/latest/bin:~/.local/bin:$PATH
@@ -63,9 +75,16 @@ jobs:
         echo "=== ENV ==="
         echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
         echo "PATH=$PATH"
+        which java || true
         java -version || true
-        python3 --version
+        which python || true
+        python --version || true
+        which python3 || true
+        python3 --version || true
+        echo "buildozer location:"
+        ls -lah ~/.local/bin || true
         ~/.local/bin/buildozer --version || true
+        echo "SDK folders:"
         ls -lah /usr/local/lib/android/sdk || true
 
     - name: Build APK with Buildozer
@@ -76,14 +95,14 @@ jobs:
         PATH: /usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/cmdline-tools/latest/bin:~/.local/bin:$PATH
       run: |
         set -e
-        # Print buildozer spec for logs
-        echo "---- buildozer.spec ----"
+        echo "---- buildozer.spec (top 200 lines) ----"
         sed -n '1,200p' buildozer.spec || true
         echo "---- Start buildozer ----"
         ~/.local/bin/buildozer -v android debug || {
-          echo "Buildozer failed. List bin/ and .buildozer folder for debugging:"
+          echo "Buildozer failed. Dumping useful folders for debugging..."
           ls -lah bin || true
-          ls -lah .buildozer || true
+          ls -lah ./.buildozer || true
+          find . -maxdepth 3 -type f -name "*.log" -print || true
           exit 1
         }
 
@@ -95,3 +114,4 @@ jobs:
         path: |
           bin/*.apk
           ./.buildozer/android/platform/build-arm64-v8a/dists/*/bin/*.apk
+          ./.buildozer/android/platform/build-armv7a-dists/*/bin/*.apk

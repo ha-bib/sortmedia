@@ -10,6 +10,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
+    # Pastikan PATH standar + ~/.local/bin ada di semua step
+    env:
+      PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:~/.local/bin:${{ env.PATH }}
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -37,8 +43,8 @@ jobs:
 
     - name: Install apt dependencies (including common utils)
       run: |
-        sudo apt update
-        sudo apt install -y \
+        sudo apt-get update -y
+        sudo apt-get install -y --no-install-recommends \
           unzip zip build-essential \
           libffi-dev libssl-dev libsqlite3-dev zlib1g-dev libbz2-dev \
           libreadline-dev libncurses5-dev libncursesw5-dev libgdbm-dev \
@@ -48,12 +54,14 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip install --user buildozer cython virtualenv
-        echo "Buildozer installed at ~/.local/bin:"
+        # Ensure ~/.local/bin exists and is on PATH
+        mkdir -p ~/.local/bin
+        echo "Files in ~/.local/bin:"
         ls -lah ~/.local/bin || true
+        echo "buildozer binary (if present):"
+        command -v buildozer || command -v ~/.local/bin/buildozer || true
 
     - name: Setup Android SDK cmdline-tools and accept licenses
-      env:
-        SDKROOT: /usr/local/lib/android/sdk
       run: |
         set -e
         SDKROOT=/usr/local/lib/android/sdk
@@ -63,44 +71,54 @@ jobs:
         mkdir -p $SDKROOT/cmdline-tools/latest
         mv $SDKROOT/cmdline-tools/cmdline-tools/* $SDKROOT/cmdline-tools/latest/ || true
         export PATH=$SDKROOT/cmdline-tools/latest/bin:$PATH
+        # Accept licenses and install packages
         yes | sdkmanager --sdk_root="$SDKROOT" --licenses
         sdkmanager --sdk_root="$SDKROOT" "platform-tools" "platforms;android-34" "build-tools;36.0.0" "ndk;25.2.9519653"
 
-    - name: Show env, versions, and basic checks (debug)
-      env:
-        ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-        PATH: /usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/cmdline-tools/latest/bin:~/.local/bin:$PATH
+    - name: Debug checks before build (show that system tools exist)
       run: |
-        echo "=== ENV ==="
-        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-        echo "PATH=$PATH"
-        echo "Which commands:"
-        which git || true
-        which sed || true
-        which find || true
-        which ls || true
-        which java || true
+        echo "=== PATH ==="
+        echo $PATH
+        echo "Which / versions:"
+        command -v git || echo "git NOT FOUND"
+        git --version || true
+        command -v sed || echo "sed NOT FOUND"
+        sed --version || true
+        command -v find || echo "find NOT FOUND"
+        find --version || true || true
+        command -v ls || echo "ls NOT FOUND"
+        ls --version || true || true
+        command -v java || echo "java NOT FOUND"
         java -version || true
-        python --version || true
-        echo "buildozer location:"
+        command -v python || command -v python3 || true
+        python --version || python3 --version || true
+        echo "buildozer binary candidates:"
+        command -v buildozer || true
+        command -v ~/.local/bin/buildozer || true
         ls -lah ~/.local/bin || true
-        ~/.local/bin/buildozer --version || true
-        echo "SDK folders:"
-        ls -lah /usr/local/lib/android/sdk || true
 
     - name: Build APK with Buildozer
       env:
-        ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-        ANDROID_HOME: /usr/local/lib/android/sdk
         ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/25.2.9519653
-        PATH: /usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/cmdline-tools/latest/bin:~/.local/bin:$PATH
+        PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:~/.local/bin:${{ env.PATH }}
       run: |
         set -e
-        echo "---- buildozer.spec (top 200 lines) ----"
+        echo "---- buildozer.spec (snip) ----"
         sed -n '1,200p' buildozer.spec || true
-        echo "---- Start buildozer ----"
-        ~/.local/bin/buildozer -v android debug || {
-          echo "Buildozer failed. Dumping useful folders for debugging..."
+        echo "Starting Buildozer..."
+        # Use explicit path to buildozer in case PATH still not picked up
+        if [ -x "~/.local/bin/buildozer" ] || [ -x "$HOME/.local/bin/buildozer" ]; then
+          BUILD_BIN="$HOME/.local/bin/buildozer"
+        else
+          BUILD_BIN="$(command -v buildozer || true)"
+        fi
+        echo "Using buildozer at: $BUILD_BIN"
+        if [ -z "$BUILD_BIN" ]; then
+          echo "ERROR: buildozer not found in PATH or ~/.local/bin"
+          exit 1
+        fi
+        $BUILD_BIN -v android debug || {
+          echo "Build failed — dumping directories for debug"
           ls -lah bin || true
           ls -lah ./.buildozer || true
           find . -maxdepth 3 -type f -name "*.log" -print || true
